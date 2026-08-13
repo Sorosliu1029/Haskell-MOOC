@@ -1,7 +1,7 @@
 -- Exercise set 4a:
 --
---  * using type classes
---  * working with lists
+-- * using type classes
+-- * working with lists
 --
 -- Type classes you'll need
 --  * Eq
@@ -21,7 +21,6 @@ import Data.List
 import Data.Ord
 import qualified Data.Map as Map
 import Data.Array
-import qualified Data.Array as Array
 
 ------------------------------------------------------------------------------
 -- Ex 1: implement the function allEqual which returns True if all
@@ -36,8 +35,8 @@ import qualified Data.Array as Array
 -- you remove the Eq a => constraint from the type!
 
 allEqual :: Eq a => [a] -> Bool
-allEqual (x:y:xs) = x == y && allEqual (y:xs)
-allEqual _ = True
+allEqual [] = True
+allEqual (x:xs) = all (==x) xs
 
 ------------------------------------------------------------------------------
 -- Ex 2: implement the function distinct which returns True if all
@@ -52,7 +51,7 @@ allEqual _ = True
 --   distinct [1,2] ==> True
 
 distinct :: Eq a => [a] -> Bool
-distinct xs = length (nub xs) == length xs
+distinct xs = xs == nub xs
 
 ------------------------------------------------------------------------------
 -- Ex 3: implement the function middle that returns the middle value
@@ -65,8 +64,8 @@ distinct xs = length (nub xs) == length xs
 --   middle 'b' 'a' 'c'  ==> 'b'
 --   middle 1 7 3        ==> 3
 
-middle :: Ord a => a -> a -> a -> a
-middle a b c = sort [a,b,c] !! 1
+middle :: (Ord a) => a -> a -> a -> a
+middle x y z = sort [x,y,z] !! 1
 
 ------------------------------------------------------------------------------
 -- Ex 4: return the range of an input list, that is, the difference
@@ -81,9 +80,8 @@ middle a b c = sort [a,b,c] !! 1
 --   rangeOf [4,2,1,3]          ==> 3
 --   rangeOf [1.5,1.0,1.1,1.2]  ==> 0.5
 
-rangeOf :: (Ord a, Num a) => [a] -> a
-rangeOf xs = let sortedXs = sort xs
-             in last sortedXs - head sortedXs
+rangeOf :: (Num a, Ord a) => [a] -> a
+rangeOf xs = maximum xs - minimum xs
 
 ------------------------------------------------------------------------------
 -- Ex 5: given a (non-empty) list of (non-empty) lists, return the longest
@@ -102,12 +100,19 @@ rangeOf xs = let sortedXs = sort xs
 --   longest ["bcd","def","ab"] ==> "bcd"
 
 longest :: Ord a => [[a]] -> [a]
-longest = foldr
-          (\xs acc -> if length xs > length acc || 
-                        ((length xs == length acc) && (head xs < head acc))
-                      then xs 
-                      else acc)
-          []
+longest = last . sortBy (comparing length) . reverse . sortBy (comparing head)
+
+{-
+-- Answer to the challenge:
+longest (xs:xss) =
+  let longer :: Ord a => [a] -> [a] -> [a]
+      longer xs ys
+        | length xs < length ys = ys
+        | length xs > length ys = xs
+        | head xs <= head ys    = xs
+        | otherwise             = ys
+  in foldr longer xs xss
+-}
 
 ------------------------------------------------------------------------------
 -- Ex 6: Implement the function incrementKey, that takes a list of
@@ -124,8 +129,10 @@ longest = foldr
 --   incrementKey 'a' [('a',3.4)] ==> [('a',4.4)]
 
 incrementKey :: (Eq k, Num v) => k -> [(k,v)] -> [(k,v)]
-incrementKey _ [] =  []
-incrementKey key ((k,v):ps) = (if key == k then (k,v+1) else (k,v)) : incrementKey key ps
+incrementKey k kvs = map incr kvs
+    where incr (k',v)
+              | k'==k = (k',v+1)
+              | otherwise = (k',v)
 
 ------------------------------------------------------------------------------
 -- Ex 7: compute the average of a list of values of the Fractional
@@ -159,9 +166,10 @@ average xs = sum xs / fromIntegral (length xs)
 --     ==> "Lisa"
 
 winner :: Map.Map String Int -> String -> String -> String
-winner scores player1 player2 = let p1score = Map.findWithDefault 0 player1 scores
-                                    p2score = Map.findWithDefault 0 player2 scores
-                                in if p1score >= p2score then player1 else player2
+winner scores player1 player2
+  | score player2 > score player1 = player2
+  | otherwise = player1
+  where score p = Map.findWithDefault 0 p scores
 
 ------------------------------------------------------------------------------
 -- Ex 9: compute how many times each value in the list occurs. Return
@@ -176,11 +184,13 @@ winner scores player1 player2 = let p1score = Map.findWithDefault 0 player1 scor
 --     ==> Map.fromList [(False,3),(True,1)]
 
 freqs :: (Eq a, Ord a) => [a] -> Map.Map a Int
-freqs = foldr (\a m -> Map.alter f a m) Map.empty
-          where f Nothing = Just 1
-                f (Just cnt) = Just (cnt+1) 
+freqs [] = Map.empty
+freqs (x:xs) = Map.alter inc x rest
+  where rest = freqs xs
+        inc Nothing = Just 1
+        inc (Just n) = Just (n+1)
 
--- from Ref, TIL
+-- Answer to both challenges:
 -- freqs = foldr (Map.alter $ Just . maybe 1 (+1)) Map.empty
 
 ------------------------------------------------------------------------------
@@ -211,9 +221,9 @@ freqs = foldr (\a m -> Map.alter f a m) Map.empty
 transfer :: String -> String -> Int -> Map.Map String Int -> Map.Map String Int
 transfer from to amount bank =
   case (Map.lookup from bank, Map.lookup to bank) of
-    (Just fSum, Just tSum) -> if amount < 0 || fSum < amount 
-                                then bank
-                                else Map.insert from (fSum-amount) (Map.insert to (tSum+amount) bank)
+    (Just fromBalance, Just toBalance)
+      | amount >= 0 && fromBalance >= amount ->
+          Map.adjust (+amount) to (Map.adjust (\x -> x-amount) from bank)
     _ -> bank
 
 ------------------------------------------------------------------------------
@@ -224,9 +234,7 @@ transfer from to amount bank =
 --         ==> array (1,4) [(1,"one"),(2,"three"),(3,"two"),(4,"four")]
 
 swap :: Ix i => i -> i -> Array i a -> Array i a
-swap i j arr = let a = arr ! i
-                   b = arr ! j
-               in arr // [(i, b), (j, a)] 
+swap i j arr = arr // [(i,arr!j), (j, arr!i)]
 
 ------------------------------------------------------------------------------
 -- Ex 12: given an Array, find the index of the largest element. You
@@ -237,7 +245,5 @@ swap i j arr = let a = arr ! i
 -- Hint: check out Data.Array.indices or Data.Array.assocs
 
 maxIndex :: (Ix i, Ord a) => Array i a -> i
-maxIndex arr = fst (foldr (\(i, a) (accI, accA) -> if a > accA then (i, a) else (accI, accA))
-                     (head xs)
-                     xs)
-                  where xs = Array.assocs arr
+maxIndex arr = index
+  where (index, _) = maximumBy (\(_,x) (_,y) -> compare x y) (assocs arr)
