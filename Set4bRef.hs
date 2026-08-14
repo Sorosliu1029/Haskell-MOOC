@@ -22,9 +22,8 @@ countNothings :: [Maybe a] -> Int
 countNothings xs = foldr countHelper 0 xs
 
 countHelper :: Maybe a -> Int -> Int
--- countHelper x acc = case x of Nothing -> acc+1
---                               _ -> acc
-countHelper x acc = maybe (acc+1) (const acc) x
+countHelper Nothing n = n+1
+countHelper (Just _) n = n
 
 ------------------------------------------------------------------------------
 -- Ex 2: myMaximum with a fold. Just like in the previous exercise,
@@ -38,6 +37,7 @@ myMaximum :: [Int] -> Int
 myMaximum [] = 0
 myMaximum (x:xs) = foldr maxHelper x xs
 
+maxHelper :: Int -> Int -> Int
 maxHelper = max
 
 ------------------------------------------------------------------------------
@@ -55,10 +55,8 @@ maxHelper = max
 sumAndLength :: [Double] -> (Double,Int)
 sumAndLength xs = foldr slHelper slStart xs
 
-slStart :: (Double,Int)
-slStart = (0.0,0)
-slHelper :: Double -> (Double,Int) -> (Double,Int)
-slHelper x (accSum, accLen) = (accSum+x, accLen+1)
+slStart = (0,0)
+slHelper x (sum,cnt) = (sum+x,cnt+1)
 
 ------------------------------------------------------------------------------
 -- Ex 4: implement concat with a fold. Define concatHelper and
@@ -87,11 +85,11 @@ concatHelper = (++)
 largest :: [Int] -> [Int]
 largest xs = foldr largestHelper [] xs
 
-largestHelper x acc
-  | null acc = [x]
-  | x == head acc = x : acc
-  | x > head acc = [x]
-  | otherwise = acc
+largestHelper x [] = [x]
+largestHelper x (y:ys)
+  | x > y = [x]
+  | x == y = x:y:ys
+  | otherwise = y:ys
 
 
 ------------------------------------------------------------------------------
@@ -107,8 +105,7 @@ largestHelper x acc
 myHead :: [a] -> Maybe a
 myHead xs = foldr headHelper Nothing xs
 
-headHelper :: a -> Maybe a -> Maybe a
-headHelper x acc = Just x
+headHelper x _ = Just x
 
 ------------------------------------------------------------------------------
 -- Ex 7: get the last element of a list with a fold. Define lasthelper
@@ -124,6 +121,5 @@ myLast :: [a] -> Maybe a
 myLast xs = foldr lastHelper Nothing xs
 
 lastHelper :: a -> Maybe a -> Maybe a
-lastHelper x acc = case acc of Nothing -> Just x
-                               _ -> acc
-
+lastHelper x Nothing = Just x
+lastHelper _ (Just x) = Just x
