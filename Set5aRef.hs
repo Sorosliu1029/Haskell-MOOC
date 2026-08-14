@@ -6,7 +6,6 @@
 module Set5a where
 
 import Mooc.Todo
-import Control.Parallel.Strategies (r0)
 
 ------------------------------------------------------------------------------
 -- Ex 1: Define the type Vehicle that has four constructors: Bike,
@@ -51,7 +50,7 @@ twoBananas = MkShoppingEntry "Banana" 1.1 2
 --   totalPrice twoBananas   ==> 2.2
 
 totalPrice :: ShoppingEntry -> Double
-totalPrice (MkShoppingEntry _ price count) = price * fromIntegral count
+totalPrice (MkShoppingEntry _ price count) = fromIntegral count * price
 
 -- buyOneMore should increment the count in an entry by one
 --
@@ -59,7 +58,7 @@ totalPrice (MkShoppingEntry _ price count) = price * fromIntegral count
 --   buyOneMore twoBananas    ==> MkShoppingEntry "Banana" 1.1 3
 
 buyOneMore :: ShoppingEntry -> ShoppingEntry
-buyOneMore (MkShoppingEntry name price count) =  MkShoppingEntry name price (count+1)
+buyOneMore (MkShoppingEntry name price count) = MkShoppingEntry name price (count+1)
 
 ------------------------------------------------------------------------------
 -- Ex 4: define a datatype Person, which should contain the age (an
@@ -68,28 +67,28 @@ buyOneMore (MkShoppingEntry name price count) =  MkShoppingEntry name price (cou
 -- Also define a Person value fred, and the functions getAge, getName,
 -- setAge and setName (see below).
 
-data Person = MkPerson { age :: Int, name :: String }
+data Person = MkPerson Int String
   deriving Show
 
 -- fred is a person whose name is Fred and age is 90
 fred :: Person
-fred = MkPerson 30 "Fred"
+fred = MkPerson 90 "Fred"
 
 -- getName returns the name of the person
 getName :: Person -> String
-getName = name
+getName (MkPerson _ name) = name
 
 -- getAge returns the age of the person
 getAge :: Person -> Int
-getAge = age
+getAge (MkPerson age _) = age
 
 -- setName takes a person and returns a new person with the name changed
 setName :: String -> Person -> Person
-setName name (MkPerson age _) = MkPerson age name
+setName name (MkPerson age _name) = MkPerson age name
 
 -- setAge does likewise for age
 setAge :: Int -> Person -> Person
-setAge age (MkPerson _ name) = MkPerson age name
+setAge age (MkPerson _age name) = MkPerson age name
 
 ------------------------------------------------------------------------------
 -- Ex 5: define a datatype Position which contains two Int values, x
@@ -99,27 +98,27 @@ setAge age (MkPerson _ name) = MkPerson age name
 --   getY (up (up origin))    ==> 2
 --   getX (up (right origin)) ==> 1
 
-data Position = MkPosition { x :: Int, y :: Int }
+data Position = Position Int Int
 
 -- origin is a Position value with x and y set to 0
 origin :: Position
-origin = MkPosition 0 0
+origin = Position 0 0
 
 -- getX returns the x of a Position
 getX :: Position -> Int
-getX = x
+getX (Position x _) = x
 
 -- getY returns the y of a position
 getY :: Position -> Int
-getY = y
+getY (Position _ y) = y
 
 -- up increases the y value of a position by one
 up :: Position -> Position
-up (MkPosition x y) = MkPosition x (y+1)
+up (Position x y) = Position x (y+1)
 
 -- right increases the x value of a position by one
 right :: Position -> Position
-right (MkPosition x y) = MkPosition (x+1) y
+right (Position x y) = Position (x+1) y
 
 ------------------------------------------------------------------------------
 -- Ex 6: Here's a datatype that represents a student. A student can
@@ -135,10 +134,9 @@ data Student = Freshman | NthYear Int | Graduated
 
 study :: Student -> Student
 study Freshman = NthYear 1
+study (NthYear 7) = Graduated
+study (NthYear i) = NthYear (i+1)
 study Graduated = Graduated
-study (NthYear k)
-  | k < 7 = NthYear (k+1)
-  | otherwise = Graduated
 
 ------------------------------------------------------------------------------
 -- Ex 7: define a datatype UpDown that represents a counter that can
@@ -165,20 +163,20 @@ zero = Up 0
 
 -- get returns the counter value
 get :: UpDown -> Int
-get ud = case ud of (Up k) -> k
-                    (Down k) -> k
+get (Up x) = x
+get (Down x) = x
 
 -- tick increases an increasing counter by one or decreases a
 -- decreasing counter by one
 tick :: UpDown -> UpDown
-tick ud = case ud of (Up k) -> Up (k+1)
-                     (Down k) -> Down (k-1)
+tick (Up x)   = Up (x+1)
+tick (Down x) = Down (x-1)
 
 -- toggle changes an increasing counter into a decreasing counter and
 -- vice versa
 toggle :: UpDown -> UpDown
-toggle ud = case ud of (Up k) -> Down k
-                       (Down k) -> Up k
+toggle (Up x) = Down x
+toggle (Down x) = Up x
 
 ------------------------------------------------------------------------------
 -- Ex 8: you'll find a Color datatype below. It has the three basic
@@ -211,11 +209,9 @@ rgb :: Color -> [Double]
 rgb Red = [1,0,0]
 rgb Green = [0,1,0]
 rgb Blue = [0,0,1]
-rgb (Mix c1 c2) = let c1rgb = rgb c1
-                      c2rgb = rgb c2
-                      avg i chs1 chs2 = ((chs1!!i) + (chs2!!i)) / 2
-                  in map (\i -> avg i c1rgb c2rgb) [0..2]
-rgb (Invert c) = map (\ch -> 1.0 - ch) (rgb c)
+rgb (Mix c c') = zipWith avg (rgb c) (rgb c')
+  where avg x y = (x+y)/2
+rgb (Invert c) = map (1-) $ rgb c
 
 ------------------------------------------------------------------------------
 -- Ex 9: define a parameterized datatype OneOrTwo that contains one or
@@ -224,7 +220,7 @@ rgb (Invert c) = map (\ch -> 1.0 - ch) (rgb c)
 -- Examples:
 --   One True         ::  OneOrTwo Bool
 --   Two "cat" "dog"  ::  OneOrTwo String
- 
+
 data OneOrTwo a = One a | Two a a
 
 ------------------------------------------------------------------------------
@@ -251,11 +247,11 @@ data KeyVals k v = Empty | Pair k v (KeyVals k v)
 
 toList :: KeyVals k v -> [(k,v)]
 toList Empty = []
-toList (Pair k v rst) = (k,v) : toList rst
+toList (Pair k v rest) = (k,v) : toList rest
 
 fromList :: [(k,v)] -> KeyVals k v
 fromList [] = Empty
-fromList ((k,v) : xs) = Pair k v (fromList xs)
+fromList ((k,v):kvs) = Pair k v (fromList kvs)
 
 ------------------------------------------------------------------------------
 -- Ex 11: The data type Nat is the so called Peano
@@ -273,13 +269,14 @@ data Nat = Zero | PlusOne Nat
 
 fromNat :: Nat -> Int
 fromNat Zero = 0
-fromNat (PlusOne nat) = 1 + fromNat nat
+fromNat (PlusOne n) = 1 + fromNat n
 
 toNat :: Int -> Maybe Nat
 toNat z
-  | z < 0 = Nothing
-  | z == 0 = Just Zero
-  | otherwise = case toNat (z-1) of (Just a) -> Just (PlusOne a)
+  | z < 0      = Nothing
+  | otherwise  = Just (go z)
+  where go 0 = Zero
+        go n = PlusOne (go (n-1))
 
 ------------------------------------------------------------------------------
 -- Ex 12: While pleasingly simple in its definition, the Nat datatype is not
@@ -339,16 +336,30 @@ inc (O b) = I b
 inc (I b) = O (inc b)
 
 prettyPrint :: Bin -> String
-prettyPrint End = ""
-prettyPrint (O bin) = prettyPrint bin ++ "0"
-prettyPrint (I bin) = prettyPrint bin ++ "1"
+prettyPrint b = prettyPrint' b ""
+  where
+    prettyPrint' End   s = s
+    prettyPrint' (O b) s = prettyPrint' b ('0':s)
+    prettyPrint' (I b) s = prettyPrint' b ('1':s)
 
 fromBin :: Bin -> Int
-fromBin End = 0
-fromBin (O bin) = fromBin bin * 2
-fromBin (I bin) = fromBin bin * 2 + 1
+fromBin End   = 0
+fromBin (O b) = 2 * fromBin b
+fromBin (I b) = 2 * fromBin b + 1
 
 toBin :: Int -> Bin
-toBin 0 = O End
-toBin 1 = I End
-toBin i = if odd i then I (toBin (div (i-1) 2)) else O (toBin (div i 2))
+toBin 0 = (O End)
+toBin n = inc (toBin (n-1))
+
+-- Solution to the challenge:
+--
+-- An utility function for extracting the bits from an Int:
+bits :: Int -> [Int]
+bits 0 = [0]
+bits 1 = [1]
+bits n = n `mod` 2 : bits (n `div` 2)
+
+toBin' :: Int -> Bin
+toBin' n = foldr helper End (bits n)
+   where helper 0 = O
+         helper _ = I
