@@ -4,7 +4,6 @@ module Set6 where
 
 import Mooc.Todo
 import Data.Char (toLower)
-import Control.Parallel.Strategies (r0)
 
 ------------------------------------------------------------------------------
 -- Ex 1: define an Eq instance for the type Country below. You'll need
@@ -14,10 +13,10 @@ data Country = Finland | Switzerland | Norway
   deriving Show
 
 instance Eq Country where
-  Finland == Finland = True
-  Switzerland == Switzerland = True
-  Norway == Norway = True
-  _ == _ = False
+  Finland == Finland           = True
+  Switzerland == Switzerland   = True
+  Norway == Norway             = True
+  _ == _         = False
 
 ------------------------------------------------------------------------------
 -- Ex 2: implement an Ord instance for Country so that
@@ -26,13 +25,10 @@ instance Eq Country where
 -- Remember minimal complete definitions!
 
 instance Ord Country where
-  -- compare = todo -- implement me?
-  Finland <= Norway = True
-  Norway <= Switzerland = True
-  Finland <= Switzerland = True
-  a <= b = a == b
-  -- min = todo -- and me?
-  -- max = todo -- and me?
+  Finland <= Norway       = True
+  Finland <= Switzerland  = True
+  Norway <= Switzerland   = True
+  x <= y                  = x == y
 
 ------------------------------------------------------------------------------
 -- Ex 3: Implement an Eq instance for the type Name which contains a String.
@@ -48,7 +44,7 @@ data Name = Name String
   deriving Show
 
 instance Eq Name where
-  (Name a) == (Name b) = map toLower a == map toLower b
+  Name s == Name s'  =  map toLower s == map toLower s'
 
 ------------------------------------------------------------------------------
 -- Ex 4: here is a list type parameterized over the type it contains.
@@ -62,9 +58,9 @@ data List a = Empty | LNode a (List a)
   deriving Show
 
 instance Eq a => Eq (List a) where
-  Empty == Empty = True
-  (LNode a al) == (LNode b bl) = a == b && al == bl
-  _ == _ = False
+  Empty == Empty            = True
+  LNode x xs == LNode y ys  = x == y && xs == ys
+  _ == _                    = False
 
 ------------------------------------------------------------------------------
 -- Ex 5: below you'll find two datatypes, Egg and Milk. Implement a
@@ -92,24 +88,22 @@ instance Price Egg where
   price ChocolateEgg = 30
 
 instance Price Milk where
-  price (Milk liter) = 15 * liter
+  price (Milk litres) = 15 * litres
 
 ------------------------------------------------------------------------------
--- Ex 6: define the necessary instance hierarchy in order to be able
--- to compute these:
+-- Ex 6: define the necessary instances in order to be able to compute these:
 --
 -- price (Just ChickenEgg) ==> 20
 -- price [Milk 1, Milk 2]  ==> 45
 -- price [Just ChocolateEgg, Nothing, Just ChickenEgg]  ==> 50
 -- price [Nothing, Nothing, Just (Milk 1), Just (Milk 2)]  ==> 45
 
+instance Price a => Price [a] where
+  price xs = sum (map price xs)
+
 instance Price a => Price (Maybe a) where
   price Nothing = 0
-  price (Just a) = price a
-
-instance Price a => Price [a] where
-  price = sum . map price
-
+  price (Just xs) = price xs
 
 ------------------------------------------------------------------------------
 -- Ex 7: below you'll find the datatype Number, which is either an
@@ -122,9 +116,9 @@ data Number = Finite Integer | Infinite
   deriving (Show,Eq)
 
 instance Ord Number where
-  _ <= Infinite = True
-  Infinite <= _ = False
-  (Finite a) <= (Finite b) = a <= b
+  (Finite x) <= (Finite y) = x <= y
+  _          <= Infinite   = True
+  _          <= _          = False
 
 ------------------------------------------------------------------------------
 -- Ex 8: rational numbers have a numerator and a denominator that are
@@ -150,10 +144,10 @@ data RationalNumber = RationalNumber Integer Integer
   deriving Show
 
 instance Eq RationalNumber where
-  (RationalNumber a b) == (RationalNumber c d) = (a*d) == (b*c)
+  (RationalNumber a b) == (RationalNumber c d) = a * d == b * c
 
 ------------------------------------------------------------------------------
--- Ex 9: implement the function simplify, which simplifies a rational
+-- Ex 9: implement the function simplify, which simplifies rational a
 -- number by removing common factors of the numerator and denominator.
 -- In other words,
 --
@@ -170,8 +164,7 @@ instance Eq RationalNumber where
 -- Hint: Remember the function gcd?
 
 simplify :: RationalNumber -> RationalNumber
-simplify (RationalNumber a b) = let g = gcd a b
-                                in RationalNumber (div a g) (div b g)
+simplify (RationalNumber a b) = RationalNumber (div a c) (div b c) where c = gcd a b
 
 ------------------------------------------------------------------------------
 -- Ex 10: implement the typeclass Num for RationalNumber. The results
@@ -192,15 +185,24 @@ simplify (RationalNumber a b) = let g = gcd a b
 --   signum (RationalNumber 0 2)             ==> RationalNumber 0 1
 
 instance Num RationalNumber where
-  (RationalNumber a b) + (RationalNumber c d) = simplify (RationalNumber ((a*d)+(c*b)) (b*d))
-  (RationalNumber a b) * (RationalNumber c d) = simplify (RationalNumber (a*c) (b*d))
-  abs q = if signum q == -1 then negate q else q
-  signum (RationalNumber a b) | ab > 0 = 1
-                              | ab < 0 = -1
-                              | otherwise = 0
-                            where ab = a * b
+  (RationalNumber a b) + (RationalNumber c d) =
+    simplify (RationalNumber (a * d + b * c) (b * d))
+
+  (RationalNumber a b) * (RationalNumber c d) =
+    simplify (RationalNumber (a * c) (b * d))
+
+  abs p@(RationalNumber a b)
+    | a * b < 0 = RationalNumber (-a) b
+    | otherwise = p
+
+  signum (RationalNumber a b)
+    | a * b < 0 = RationalNumber (-1) (1)
+    | a == 0    = RationalNumber 0 1
+    | otherwise = RationalNumber (1) (1)
+
   fromInteger x = RationalNumber x 1
-  negate q = fromInteger 0 + (fromInteger (-1) * q)
+
+  negate (RationalNumber a b) = RationalNumber (-a) b
 
 ------------------------------------------------------------------------------
 -- Ex 11: a class for adding things. Define a class Addable with a
@@ -260,8 +262,8 @@ data Suit = Club | Spade | Diamond | Heart
 class Cycle a where
   step :: a -> a
   stepMany :: Int -> a -> a
-  stepMany 0 a = a
-  stepMany k a = stepMany (k-1) (step a)
+  stepMany 0 x = x
+  stepMany n x = stepMany (n-1) (step x)
 
 instance Cycle Color where
   step Red = Green
