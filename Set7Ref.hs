@@ -7,7 +7,6 @@ import Data.List
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.Monoid
 import Data.Semigroup
-import Test.QuickCheck (NonEmptyList(NonEmpty))
 
 ------------------------------------------------------------------------------
 -- Ex 1: you'll find below the types Time, Distance and Velocity,
@@ -53,12 +52,16 @@ emptySet :: Set a
 emptySet = Set []
 
 -- member tests if an element is in a set
-member :: Eq a => a -> Set a -> Bool
-member a (Set set) = any (==a) set
+member a (Set xs) = elem a xs
 
 -- add a member to a set
-add :: (Eq a, Ord a) => a -> Set a -> Set a
-add a (Set set) = if member a (Set set) then Set set else Set (sort (a:set))
+add :: Ord a => a -> Set a -> Set a
+add a (Set xs) = Set (go a xs)
+  where go a [] = [a]
+        go a (x:xs)
+          | a == x = x:xs
+          | a > x = x : go a xs
+          | a < x = a : x : xs
 
 ------------------------------------------------------------------------------
 -- Ex 3: a state machine for baking a cake. The type Event represents
@@ -73,7 +76,7 @@ add a (Set set) = if member a (Set set) then Set set else Set (sort (a:set))
 -- so that they have the following behaviour:
 --
 --  * Baking starts in the Start state
---  * A successful cake (represented by the Finished value) is baked
+--  * A successful cake (reperesented by the Finished value) is baked
 --    by first adding eggs, then adding flour and sugar (flour and
 --    sugar can be added in which ever order), then mixing, and
 --    finally baking.
@@ -93,19 +96,19 @@ add a (Set set) = if member a (Set set) then Set set else Set (sort (a:set))
 data Event = AddEggs | AddFlour | AddSugar | Mix | Bake
   deriving (Eq,Show)
 
-data State = Start | WithEggs | WithFlour | WithSugar | Prepared | Miexed | Error | Finished
+data State = Start | Eggs | EggsFlour | EggsSugar | AllIngredients | Mixed | Error | Finished
   deriving (Eq,Show)
 
 step :: State -> Event -> State
-step Start AddEggs = WithEggs
-step WithEggs AddFlour = WithFlour
-step WithEggs AddSugar = WithSugar
-step WithFlour AddSugar = Prepared
-step WithSugar AddFlour = Prepared
-step Prepared Mix = Miexed
-step Miexed Bake = Finished
-step Finished _ = Finished
-step _ _ = Error
+step Start          AddEggs  = Eggs
+step Eggs           AddFlour = EggsFlour
+step Eggs           AddSugar = EggsSugar
+step EggsFlour      AddSugar = AllIngredients
+step EggsSugar      AddFlour = AllIngredients
+step AllIngredients Mix      = Mixed
+step Mixed          Bake     = Finished
+step Finished       _        = Finished
+step _              _        = Error
 
 -- do not edit this
 bake :: [Event] -> State
@@ -125,7 +128,7 @@ bake events = go Start events
 --   average (1.0 :| [2.0,3.0])  ==>  2.0
 
 average :: Fractional a => NonEmpty a -> a
-average a = sum a / fromIntegral (length a)
+average (a:|as) = (a + sum as) / (1 + fromIntegral (length as))
 
 ------------------------------------------------------------------------------
 -- Ex 5: reverse a NonEmpty list.
@@ -133,8 +136,10 @@ average a = sum a / fromIntegral (length a)
 -- PS. The Data.List.NonEmpty type has been imported for you
 
 reverseNonEmpty :: NonEmpty a -> NonEmpty a
-reverseNonEmpty (x :| xs) = let r = reverse xs ++ [x]
-                            in head r :| drop 1 r
+reverseNonEmpty (x:|xs) = case reverse xs of
+  [] -> x :| []
+  (a:as) -> a :| (as ++ [x])
+
 ------------------------------------------------------------------------------
 -- Ex 6: implement Semigroup instances for the Distance, Time and
 -- Velocity types from exercise 1. The instances should perform
@@ -146,13 +151,13 @@ reverseNonEmpty (x :| xs) = let r = reverse xs ++ [x]
 --    ==> Velocity 20
 
 instance Semigroup Distance where
-  Distance a <> Distance b = Distance (a+b)
+  (Distance x) <> (Distance y) = Distance (x+y)
 
 instance Semigroup Time where
-  Time a <> Time b = Time (a+b)
-  
+  (Time x) <> (Time y) = Time (x+y)
+
 instance Semigroup Velocity where
-  Velocity a <> Velocity b = Velocity (a+b)
+  (Velocity x) <> (Velocity y) = Velocity (x+y)
 
 ------------------------------------------------------------------------------
 -- Ex 7: implement a Monoid instance for the Set type from exercise 2.
@@ -162,10 +167,9 @@ instance Semigroup Velocity where
 --
 -- What are the class constraints for the instances?
 
-instance (Eq a, Ord a) => Semigroup (Set a) where
-  (Set a) <> (Set b) = foldr add (Set b) a 
-
-instance (Eq a, Ord a) => Monoid (Set a) where
+instance Ord a => Semigroup (Set a) where
+  (Set as) <> set = foldr add set as
+instance Ord a => Monoid (Set a) where
   mempty = Set []
 
 ------------------------------------------------------------------------------
@@ -198,9 +202,9 @@ compute1 (Subtract1 i j) = i-j
 compute1 (Multiply1 i j) = i*j
 
 show1 :: Operation1 -> String
-show1 (Add1 a b) = show  a ++ "+" ++ show b
-show1 (Subtract1 a b) = show  a ++ "-" ++ show b
-show1 (Multiply1 a b) = show  a ++ "*" ++ show b
+show1 (Add1 i j) = show i ++ "+" ++ show j
+show1 (Subtract1 i j) = show i ++ "-" ++ show j
+show1 (Multiply1 i j) = show i ++ "*" ++ show j
 
 data Add2 = Add2 Int Int
   deriving Show
@@ -252,11 +256,11 @@ data PasswordRequirement =
   deriving Show
 
 passwordAllowed :: String -> PasswordRequirement -> Bool
-passwordAllowed str (MinimumLength l) = length str >= l
-passwordAllowed str (ContainsSome s) = any (`elem` s) str
-passwordAllowed str (DoesNotContain s) = all (\c -> not (c `elem` s)) str
-passwordAllowed str (And pr1 pr2) = passwordAllowed str pr1 && passwordAllowed str pr2
-passwordAllowed str (Or pr1 pr2) = passwordAllowed str pr1 || passwordAllowed str pr2
+passwordAllowed pw (MinimumLength len) = length pw >= len
+passwordAllowed pw (ContainsSome chars) = any (\c -> elem c chars) pw
+passwordAllowed pw (DoesNotContain chars) = not (passwordAllowed pw (ContainsSome chars))
+passwordAllowed pw (Or req1 req2) = passwordAllowed pw req1 || passwordAllowed pw req2
+passwordAllowed pw (And req1 req2) = passwordAllowed pw req1 && passwordAllowed pw req2
 
 ------------------------------------------------------------------------------
 -- Ex 10: a DSL for simple arithmetic expressions with addition and
@@ -278,22 +282,24 @@ passwordAllowed str (Or pr1 pr2) = passwordAllowed str pr1 || passwordAllowed st
 --     ==> "(3*(1+1))"
 --
 
-data Arithmetic = Literal Integer | Add Arithmetic Arithmetic | Mul Arithmetic Arithmetic
+data Arithmetic = Literal Integer
+                | Plus Arithmetic Arithmetic
+                | Times Arithmetic Arithmetic
   deriving Show
 
 literal :: Integer -> Arithmetic
-literal a = Literal a
+literal = Literal
 
 operation :: String -> Arithmetic -> Arithmetic -> Arithmetic
-operation "+" a b = Add a b
-operation "*" a b = Mul a b
+operation "+" = Plus
+operation "*" = Times
 
 evaluate :: Arithmetic -> Integer
-evaluate (Literal a) = a
-evaluate (Add a b) = evaluate a + evaluate b
-evaluate (Mul a b) = evaluate a * evaluate b
+evaluate (Literal i) = i
+evaluate (Plus a b) = evaluate a + evaluate b
+evaluate (Times a b) = evaluate a * evaluate b
 
 render :: Arithmetic -> String
-render (Literal a) = show a
-render (Add a b) = "(" ++ render a ++ "+" ++ render b ++ ")"
-render (Mul a b) = "(" ++ render a ++ "*" ++ render b ++ ")"
+render (Literal i) = show i
+render (Plus a b) = "(" ++ render a ++ "+" ++ render b ++ ")"
+render (Times a b) = "(" ++ render a ++ "*" ++ render b ++ ")"
