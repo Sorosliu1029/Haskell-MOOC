@@ -26,9 +26,9 @@ import Mooc.Todo
 -- Otherwise return "Ok."
 
 workload :: Int -> Int -> String
-workload nExercises hoursPerExercise  
-  | total > 100 = "Holy moly!"
+workload nExercises hoursPerExercise
   | total < 10 = "Piece of cake!"
+  | total > 100 = "Holy moly!"
   | otherwise = "Ok."
   where total = nExercises * hoursPerExercise
 
@@ -43,8 +43,8 @@ workload nExercises hoursPerExercise
 -- Hint: use recursion
 
 echo :: String -> String
-echo "" = ""
-echo str = str ++ ", " ++ echo (drop 1 str)
+echo [] = []
+echo xs = xs ++ ", " ++ echo (tail xs)
 
 ------------------------------------------------------------------------------
 -- Ex 3: A country issues some banknotes. The banknotes have a serial
@@ -57,8 +57,12 @@ echo str = str ++ ", " ++ echo (drop 1 str)
 -- are valid.
 
 countValid :: [String] -> Int
-countValid = length . filter f
-  where f str = (str !! 2) == (str !! 4) || (str !! 3) == (str !! 5)
+countValid ns = length (filter valid ns)
+  where valid n
+          -- indexing starts from zero!
+          | n !! 2 == n !! 4 = True
+          | n !! 3 == n !! 5 = True
+          | otherwise        = False
 
 ------------------------------------------------------------------------------
 -- Ex 4: Find the first element that repeats two or more times _in a
@@ -70,21 +74,20 @@ countValid = length . filter f
 --   repeated [1,2,1,2,3,3] ==> Just 3
 
 repeated :: Eq a => [a] -> Maybe a
-repeated [] = Nothing
-repeated (x:xs) = go (x,1) xs
-  where go (e,1) [] = Nothing
-        go (e,2) _ = Just e
-        go (e,c) (y:ys) = if e == y then go (e,c+1) ys else go (y,1) ys
+repeated (x:y:xs)
+  | x==y = Just x
+  | otherwise = repeated (y:xs)
+repeated _ = Nothing
 
 ------------------------------------------------------------------------------
 -- Ex 5: A laboratory has been collecting measurements. Some of the
 -- measurements have failed, so the lab is using the type
 --   Either String Int
 -- to track the measurements. A Left value represents a failed measurement,
--- while a Right value represents a successful one.
+-- while a Right value represents a succesful one.
 --
--- Compute the sum of all successful measurements. If there are
--- successful measurements, return the sum wrapped in a Right, but if
+-- Compute the sum of all succesful measurements. If there are
+-- succesful measurements, return the sum wrapped in a Right, but if
 -- there are none, return Left "no data".
 --
 -- Examples:
@@ -96,11 +99,9 @@ repeated (x:xs) = go (x,1) xs
 --     ==> Left "no data"
 
 sumSuccess :: [Either String Int] -> Either String Int
-sumSuccess es = let f (Left _) = False
-                    f (Right _) = True 
-                    d = filter f es
-                    g (Right x) = x
-                in if null d then Left "no data" else Right (sum (map g d))
+sumSuccess es = let successes = [x | Right x <- es]
+                in case successes of [] -> Left "no data"
+                                     xs -> Right (sum xs)
 
 ------------------------------------------------------------------------------
 -- Ex 6: A combination lock can either be open or closed. The lock
@@ -122,31 +123,34 @@ sumSuccess es = let f (Left _) = False
 --   isOpen (open "0000" (lock (changeCode "0000" (open "1234" aLock)))) ==> True
 --   isOpen (open "1234" (lock (changeCode "0000" (open "1234" aLock)))) ==> False
 
-data Lock = Lock String Bool
-  deriving Show
+data Lock = Closed String | Open String
 
 -- aLock should be a locked lock with the code "1234"
 aLock :: Lock
-aLock = Lock "1234" False
+aLock = Closed "1234"
 
 -- isOpen returns True if the lock is open
 isOpen :: Lock -> Bool
-isOpen (Lock _ open) = open
+isOpen (Open _) = True
+isOpen _        = False
 
 -- open tries to open the lock with the given code. If the code is
 -- wrong, nothing happens.
 open :: String -> Lock -> Lock
-open str (Lock code open) = if str == code then Lock code True else Lock code open 
+open code (Closed code')
+  | code == code' = Open code
+open _ l = l
 
 -- lock closes a lock. If the lock is already closed, nothing happens.
 lock :: Lock -> Lock
-lock (Lock code _) = Lock code False
+lock (Open c) = Closed c
+lock l        = l
 
 -- changeCode changes the code of an open lock. If the lock is closed,
 -- nothing happens.
 changeCode :: String -> Lock -> Lock
-changeCode _ (Lock code False) = Lock code False
-changeCode str (Lock code _) = Lock str True
+changeCode code (Open _) = Open code
+changeCode _    l        = l
 
 ------------------------------------------------------------------------------
 -- Ex 7: Here's a type Text that just wraps a String. Implement an Eq
@@ -165,7 +169,7 @@ data Text = Text String
   deriving Show
 
 instance Eq Text where
-  (Text a) == (Text b) = filter (not . isSpace) a == filter (not . isSpace) b
+  Text s == Text t  =  filter (not . isSpace) s == filter (not . isSpace) t
 
 ------------------------------------------------------------------------------
 -- Ex 8: We can represent functions or mappings as lists of pairs.
@@ -199,9 +203,9 @@ instance Eq Text where
 --       ==> [("a",1),("b",2)]
 
 compose :: (Eq a, Eq b) => [(a,b)] -> [(b,c)] -> [(a,c)]
-compose xs ys = foldr f [] xs
-  where f (a,b) acc = case lookup b ys of (Just c) -> (a,c):acc
-                                          _ -> acc
+compose ab bc = concatMap apply ab
+  where apply (a,b) = case lookup b bc of Nothing -> []
+                                          Just c -> [(a,c)]
 
 ------------------------------------------------------------------------------
 -- Ex 9: Reorder a list using a list of indices.
@@ -229,8 +233,8 @@ compose xs ys = foldr f [] xs
 --   permute [2, 1, 0] (permute [2, 1, 0] "foo") ==> "foo"
 --   permute [1, 0, 2] (permute [0, 2, 1] [9,3,5]) ==> [5,9,3]
 --   permute [0, 2, 1] (permute [1, 0, 2] [9,3,5]) ==> [3,5,9]
---   permute ([1, 0, 2] `multiply` [0, 2, 1]) [9,3,5] ==> [5,9,3]
---   permute ([0, 2, 1] `multiply` [1, 0, 2]) [9,3,5] ==> [3,5,9]
+--   permute ([0, 2, 1] `multiply` [1, 0, 2]) [9,3,5] ==> [5,9,3]
+--   permute ([1, 0, 2] `multiply` [0, 2, 1]) [9,3,5] ==> [3,5,9]
 
 -- A type alias for index lists.
 type Permutation = [Int]
@@ -245,4 +249,4 @@ multiply :: Permutation -> Permutation -> Permutation
 multiply p q = map (\i -> p !! (q !! i)) (identity (length p))
 
 permute :: Permutation -> [a] -> [a]
-permute p as = map snd (sortOn fst (zip p as)) 
+permute p = map snd . sortBy (comparing fst) . zip p
