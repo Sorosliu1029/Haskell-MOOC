@@ -13,7 +13,6 @@ import Mooc.Todo
 -- We'll use the JuicyPixels library to generate images. The library
 -- exposes the Codec.Picture module that has everything we need.
 import Codec.Picture
-import Control.Exception (handle)
 
 -- Let's start by defining Colors and Pictures.
 
@@ -65,7 +64,7 @@ justADot = Picture f
 
 -- Here's a picture that's just a solid color
 solid :: Color -> Picture
-solid color = Picture (const color)
+solid color = Picture (\coord -> color)
 
 -- Here's a simple picture:
 examplePicture1 = Picture f
@@ -135,9 +134,9 @@ renderListExample = renderList justADot (9,11) (9,11)
 
 dotAndLine :: Picture
 dotAndLine = Picture f
-  where f (Coord x y) | x == 3 && y == 4 = white
-                      | y == 8 = pink
-                      | otherwise = black
+  where f (Coord 3 4) = white
+        f (Coord _ 8) = pink
+        f _           = black
 ------------------------------------------------------------------------------
 
 ------------------------------------------------------------------------------
@@ -170,11 +169,12 @@ dotAndLine = Picture f
 --          ["7f0000","7f0000","7f0000"]]
 
 blendColor :: Color -> Color -> Color
-blendColor (Color r1 g1 b1) (Color r2 g2 b2) = Color (div (r1+r2) 2) (div (g1+g2) 2) (div (b1+b2) 2)
+blendColor (Color r1 g1 b1) (Color r2 g2 b2) = Color (avg r1 r2) (avg g1 g2) (avg b1 b2)
+  where avg x y = div (x+y) 2
 
 combine :: (Color -> Color -> Color) -> Picture -> Picture -> Picture
-combine c (Picture f) (Picture g) = Picture h 
-  where h coord = c (f coord) (g coord)
+combine op (Picture f) (Picture g) = Picture h
+  where h coord = op (f coord) (g coord)
 
 ------------------------------------------------------------------------------
 
@@ -225,28 +225,18 @@ exampleCircle = fill red (circle 80 100 200)
 -- should be a rectangle with the upper left corner at (x0, y0), a
 -- width of w, and a height of h.
 --
--- NB! The rectangle should be exactly w pixels wide and h pixels high!
--- For example, (3,3) isn't in `rectangle 2 2 1 1`.
---
--- Examples:
---
---  renderList (fill white (rectangle 2 2 1 1)) (0,3) (0,3)
---   ==> [["000000","000000","000000","000000"],
---        ["000000","000000","000000","000000"],
---        ["000000","000000","ffffff","000000"],
---        ["000000","000000","000000","000000"]]
---
---  renderList (fill white (rectangle 1 2 4 3)) (0,5) (0,5)
+-- Example:
+--  renderList (fill white (rectangle 1 2 2 3)) (0,5) (0,5)
 --   ==> [["000000","000000","000000","000000","000000","000000"],
 --        ["000000","000000","000000","000000","000000","000000"],
---        ["000000","ffffff","ffffff","ffffff","ffffff","000000"],
---        ["000000","ffffff","ffffff","ffffff","ffffff","000000"],
---        ["000000","ffffff","ffffff","ffffff","ffffff","000000"],
+--        ["000000","ffffff","ffffff","000000","000000","000000"],
+--        ["000000","ffffff","ffffff","000000","000000","000000"],
+--        ["000000","ffffff","ffffff","000000","000000","000000"],
 --        ["000000","000000","000000","000000","000000","000000"]]
 
 rectangle :: Int -> Int -> Int -> Int -> Shape
 rectangle x0 y0 w h = Shape f
-  where f (Coord x y) = x >= x0 && x < (x0+w) && y >= y0 && y < (y0+h)
+  where f (Coord x y) = and [x >= x0, x < x0+w, y >= y0, y < y0+h]
 ------------------------------------------------------------------------------
 
 ------------------------------------------------------------------------------
@@ -295,9 +285,9 @@ exampleSnowman = fill white snowman
 --        ["000000","000000","000000"]]
 
 paintSolid :: Color -> Shape -> Picture -> Picture
-paintSolid color (Shape s) (Picture p) = Picture f
-  where f coord  | s coord = color
-                 | otherwise = p coord
+paintSolid c (Shape f) (Picture g) = Picture h
+  where h coord | f coord = c
+                | otherwise = g coord
 ------------------------------------------------------------------------------
 
 allWhite :: Picture
@@ -342,9 +332,9 @@ stripes a b = Picture f
 --       ["000000","000000","000000","000000","000000"]]
 
 paint :: Picture -> Shape -> Picture -> Picture
-paint (Picture p) (Shape s) (Picture b) = Picture f
-  where f coord | s coord = p coord
-                | otherwise = b coord
+paint (Picture pat) (Shape shape) (Picture base) = Picture f
+  where f coord | shape coord = pat coord
+                | otherwise = base coord
 ------------------------------------------------------------------------------
 
 -- Here's a patterned version of the snowman example. See it by running:
@@ -360,7 +350,7 @@ examplePatterns = (paint (solid black) hat . paint (stripes red yellow) legs . p
 -- Let's implement zooming and flipping images.
 
 flipCoordXY :: Coord -> Coord
-flipCoordXY (Coord x y) = Coord y x
+flipCoordXY (Coord x y) = (Coord y x)
 
 -- Flip a picture by switching x and y coordinates
 flipXY :: Picture -> Picture
@@ -407,24 +397,21 @@ xy = Picture f
 data Fill = Fill Color
 
 instance Transform Fill where
-  apply (Fill c) (Picture p) = Picture f
-    where f _ = c
+  apply (Fill c) _ = solid c
 
 data Zoom = Zoom Int
   deriving Show
 
 instance Transform Zoom where
-  apply (Zoom z) (Picture p) = Picture f
-    where f = p . zoomCoord z
+  apply (Zoom i) picture = zoom i picture
 
 data Flip = FlipX | FlipY | FlipXY
   deriving Show
 
 instance Transform Flip where
-  apply f (Picture p) = Picture g 
-    where g (Coord x y) = case f of FlipX -> p (Coord (-x) y)
-                                    FlipY -> p (Coord x (-y))
-                                    FlipXY -> p (Coord y x)
+  apply FlipX (Picture f) = Picture (\(Coord x y) -> f (Coord (negate x) y))
+  apply FlipY (Picture f) = Picture (\(Coord x y) -> f (Coord x (negate y)))
+  apply FlipXY (Picture f) = Picture (f . flipCoordXY)
 ------------------------------------------------------------------------------
 
 ------------------------------------------------------------------------------
@@ -440,7 +427,7 @@ data Chain a b = Chain a b
   deriving Show
 
 instance (Transform a, Transform b) => Transform (Chain a b) where
-  apply (Chain a b) p = apply a (apply b p)
+  apply (Chain t1 t2) f = apply t1 (apply t2 f)
 ------------------------------------------------------------------------------
 
 -- Now we can redefine largeVerticalStripes using the above Transforms.
@@ -451,7 +438,7 @@ largeVerticalStripes2 = apply (Chain (Zoom 5) FlipXY) (stripes red yellow)
 
 -- We can also define a nice checkered pattern by overlaying two stripes.
 -- See it by running
---    render checkered 400 300 "checkered.png"
+--    render checkered 400 30 "checkered.png"
 flipBlend :: Picture -> Picture
 flipBlend picture = blend picture (apply FlipXY picture)
 
@@ -477,24 +464,12 @@ checkered = flipBlend largeVerticalStripes2
 data Blur = Blur
   deriving Show
 
-add :: Color -> Color -> Color
-add (Color r1 g1 b1) (Color r2 g2 b2) = Color (r1+r2) (g1+g2) (b1+b2)
-
-addColors :: [Color] -> Color
-addColors [] = Color 0 0 0
-addColors (c:cs) = add c (addColors cs)
-
-avgColor :: Color -> Int -> Color 
-avgColor (Color r g b) a = Color (div r a) (div g a) (div b a)
-
 instance Transform Blur where
-  apply Blur (Picture p) = Picture f
-    where f (Coord x y) = avgColor (addColors [p (Coord x y)
-                                             , p (Coord (x-1) y)
-                                             , p (Coord (x+1) y)
-                                             , p (Coord x (y-1))
-                                             , p (Coord x (y+1))])
-                                    5
+  apply Blur (Picture f) = Picture g
+    where g c = avg (map f (neighbours c))
+          neighbours (Coord x y) = [Coord x y, Coord (x-1) y, Coord (x+1) y, Coord x (y-1), Coord x (y+1)]
+          avg colors = let n = length colors
+                       in Color (sum (map getRed colors) `div` n) (sum (map getGreen colors) `div` n) (sum (map getBlue colors) `div` n)
 ------------------------------------------------------------------------------
 
 ------------------------------------------------------------------------------
@@ -512,8 +487,8 @@ data BlurMany = BlurMany Int
   deriving Show
 
 instance Transform BlurMany where
-  apply (BlurMany k) p | k == 0 = p
-                       | otherwise = apply (BlurMany (k-1)) (apply Blur p)
+  apply (BlurMany 0) pic = pic
+  apply (BlurMany n) pic = apply (BlurMany (n-1)) (apply Blur pic)
 ------------------------------------------------------------------------------
 
 -- Here's a blurred version of our original snowman. See it by running
@@ -521,3 +496,13 @@ instance Transform BlurMany where
 
 blurredSnowman = apply (BlurMany 2) exampleSnowman
 
+main = do
+  render examplePicture1 400 300 "example1.png"
+  render exampleCircle 400 300 "circle.png"
+  render exampleSnowman 400 300 "snowman.png"
+  render exampleColorful 400 300 "colorful.png"
+  render examplePatterns 400 300 "patterns.png"
+  render largeVerticalStripes 400 300 "large-stripes.png"
+  render largeVerticalStripes2 400 300 "large-stripes2.png"
+  render checkered 400 300 "checkered.png"
+  render blurredSnowman 400 300 "blurred.png"
