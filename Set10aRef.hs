@@ -17,7 +17,7 @@ import Mooc.Todo
 
 doublify :: [a] -> [a]
 doublify [] = []
-doublify (x:xs) = x : x : doublify xs
+doublify (x:xs) = x:x:doublify xs
 
 ------------------------------------------------------------------------------
 -- Ex 2: Implement the function interleave that takes two lists and
@@ -38,10 +38,8 @@ doublify (x:xs) = x : x : doublify xs
 --   take 10 (interleave [1..] (repeat 0)) ==> [1,0,2,0,3,0,4,0,5,0]
 
 interleave :: [a] -> [a] -> [a]
-interleave as bs = go True as bs
-  where go True (x:xs) ys = x : go False xs ys
-        go False xs (y:ys) = y : go True xs ys
-        go _ xs ys = xs ++ ys
+interleave (x:xs) ys = x:interleave ys xs
+interleave []     ys = ys
 
 ------------------------------------------------------------------------------
 -- Ex 3: Deal out cards. Given a list of players (strings), and a list
@@ -60,7 +58,7 @@ interleave as bs = go True as bs
 -- Hint: remember the functions cycle and zip?
 
 deal :: [String] -> [String] -> [(String,String)]
-deal ps cs = zip cs (cycle ps)
+deal players cards = zip cards (cycle players)
 
 ------------------------------------------------------------------------------
 -- Ex 4: Compute a running average. Go through a list of Doubles and
@@ -78,9 +76,10 @@ deal ps cs = zip cs (cycle ps)
 
 
 averages :: [Double] -> [Double]
-averages xs = go xs 0.0 0.0
-  where go [] _ _ = []
-        go (x:xs) sum cnt = ((sum+x) / (cnt+1)) : go xs (sum+x) (cnt+1)
+averages [] = []
+averages (x:xs) = go x 1 xs
+  where go sum count (x:xs) = (sum/count) : go (sum+x) (count+1) xs
+        go sum count []     = [sum/count]
 
 ------------------------------------------------------------------------------
 -- Ex 5: Given two lists, xs and ys, and an element z, generate an
@@ -98,7 +97,9 @@ averages xs = go xs 0.0 0.0
 --   take 10 (alternate [1,2] [3,4,5] 0) ==> [1,2,0,3,4,5,0,1,2,0]
 
 alternate :: [a] -> [a] -> a -> [a]
-alternate xs ys z = cycle (xs ++ [z] ++ ys ++ [z])
+alternate xs ys z = xs ++ z : alternate ys xs z
+-- OR
+alternate' xs ys z = cycle (xs++[z]++ys++[z])
 
 ------------------------------------------------------------------------------
 -- Ex 6: Check if the length of a list is at least n. Make sure your
@@ -110,9 +111,11 @@ alternate xs ys z = cycle (xs ++ [z] ++ ys ++ [z])
 --   lengthAtLeast 10 [0..]  ==> True
 
 lengthAtLeast :: Int -> [a] -> Bool
-lengthAtLeast n [] = n == 0
-lengthAtLeast 0 (x:xs) = True
+lengthAtLeast 0 _  = True
+lengthAtLeast n [] = False
 lengthAtLeast n (x:xs) = lengthAtLeast (n-1) xs
+-- OR
+lengthAtLeast' n xs = length (take n xs) == n
 
 ------------------------------------------------------------------------------
 -- Ex 7: The function chunks should take in a list, and a number n,
@@ -130,8 +133,9 @@ lengthAtLeast n (x:xs) = lengthAtLeast (n-1) xs
 --   take 4 (chunks 3 [0..]) ==> [[0,1,2],[1,2,3],[2,3,4],[3,4,5]]
 
 chunks :: Int -> [a] -> [[a]]
-chunks n xs
-  | lengthAtLeast n xs = take n xs : chunks n (drop 1 xs)
+chunks k [] = []
+chunks k xs
+  | lengthAtLeast k xs = take k xs : chunks k (tail xs)
   | otherwise = []
 
 ------------------------------------------------------------------------------
@@ -150,10 +154,11 @@ chunks n xs
 
 newtype IgnoreCase = IgnoreCase String
 
-instance Eq IgnoreCase where
-  (IgnoreCase a) == (IgnoreCase b) = map toLower a == map toLower b
+ignorecase :: String -> IgnoreCase
+ignorecase s = IgnoreCase s
 
-ignorecase str = IgnoreCase str
+instance Eq IgnoreCase where
+  IgnoreCase s == IgnoreCase t   = map toLower s == map toLower t
 
 ------------------------------------------------------------------------------
 -- Ex 9: Here's the Room type and some helper functions from the
@@ -199,5 +204,5 @@ play room (d:ds) = case move room d of Nothing -> [describe room]
 maze :: Room
 maze = maze1
   where maze1 = Room "Maze" [("Left",maze2),("Right",maze3)]
-        maze2 = Room "Deeper in the maze" [("Left",maze3),("Right", maze1)]
+        maze2 = Room "Deeper in the maze" [("Left",maze3),("Right",maze1)]
         maze3 = Room "Elsewhere in the maze" [("Left",maze1),("Right",maze2)]
