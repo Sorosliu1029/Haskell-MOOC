@@ -5,7 +5,6 @@
 -- matching to force evaluation!
 
 {-# LANGUAGE NoImplicitPrelude #-}
-{-# OPTIONS_GHC -Wno-overlapping-patterns #-}
 
 module Set10b where
 
@@ -23,9 +22,8 @@ import Mooc.Todo
 --   False ||| undefined ==> an error!
 
 (|||) :: Bool -> Bool -> Bool
-x ||| True = True
-False ||| False = False
-True ||| False = True
+_ ||| True  = True
+x ||| False = x
 
 ------------------------------------------------------------------------------
 -- Ex 2: Define the function boolLength, that returns the length of a
@@ -40,7 +38,8 @@ True ||| False = True
 
 boolLength :: [Bool] -> Int
 boolLength [] = 0
-boolLength (x:xs) = if x then 1 + boolLength xs else 1 + boolLength xs
+boolLength (True:xs) = 1+boolLength xs
+boolLength (False:xs) = 1+boolLength xs
 
 ------------------------------------------------------------------------------
 -- Ex 3: Define the function validate which, given a predicate and a
@@ -54,7 +53,8 @@ boolLength (x:xs) = if x then 1 + boolLength xs else 1 + boolLength xs
 --   validate (\x -> undefined) 3  ==>  an error!
 
 validate :: (a -> Bool) -> a -> a
-validate predicate value = if predicate value then value else value
+validate predicate value = case predicate value of True -> value
+                                                   False -> value
 
 ------------------------------------------------------------------------------
 -- Ex 4: Even though we can't implement the generic seq function
@@ -70,7 +70,7 @@ validate predicate value = if predicate value then value else value
 --
 -- Examples:
 --   myseq True  0 ==> 0
---   myseq ((\x -> x) True) 0 ==> 0
+--   myseq (not True) 0 ==> 0
 --   myseq (undefined :: Bool) 0
 --     ==> *** Exception: Prelude.undefined
 --   myseq (3::Int) True ==> True
@@ -81,20 +81,20 @@ validate predicate value = if predicate value then value else value
 --   myseq (1:undefined) 'z' ==> 'z'         -- 1:undefined is in WHNF
 --   myseq (undefined:[2,3]) 'z' ==> 'z'     -- undefined:[2,3] is in WHNF
 --   myseq [1..] 'z' ==> 'z'
---   myseq (undefined::[Int]) 'z'
+--   myseq (undefined::[Int])
 --     ==> *** Exception: Prelude.undefined
 
 class MySeq a where
   myseq :: a -> b -> b
 
 instance MySeq Bool where
-  myseq True b = b
-  myseq False b = b
+  myseq True x = x
+  myseq _    x = x
 
 instance MySeq Int where
-  myseq i b = if even i then b else b
+  myseq 0 x = x
+  myseq _ x = x
 
-instance MySeq a => MySeq [a] where
-  myseq [] b = b
-  myseq (undefined:_) b = b
-  myseq (x:xs) b = myseq x (myseq xs b)
+instance MySeq [a] where
+  myseq [] x = x
+  myseq _  x = x
