@@ -2,7 +2,6 @@ module Set11b where
 
 import Control.Monad
 import Data.List
-import Data.Maybe
 import Data.IORef
 import System.IO
 
@@ -21,7 +20,8 @@ import Mooc.Todo
 --   "xfoobarquux"
 
 appendAll :: IORef String -> [String] -> IO ()
-appendAll s xs = forM_ xs (\x -> modifyIORef s (++x))
+appendAll ref xs = forM_ xs app
+  where app x = modifyIORef ref (++x)
 
 ------------------------------------------------------------------------------
 -- Ex 2: Given two IORefs, swap the values stored in them.
@@ -36,11 +36,11 @@ appendAll s xs = forM_ xs (\x -> modifyIORef s (++x))
 --   "x"
 
 swapIORefs :: IORef a -> IORef a -> IO ()
-swapIORefs x y = do
-                    xx <- readIORef x
-                    yy <- readIORef y
-                    writeIORef x yy
-                    writeIORef y xx
+swapIORefs ra rb = do
+  a <- readIORef ra
+  b <- readIORef rb
+  writeIORef ra b
+  writeIORef rb a
 
 ------------------------------------------------------------------------------
 -- Ex 3: sometimes one bumps into IO operations that return IO
@@ -66,10 +66,8 @@ swapIORefs x y = do
 --        replicateM l getLine
 
 doubleCall :: IO (IO a) -> IO a
-doubleCall op = do
-                  retOp <- op
-                  a <- retOp
-                  return a
+doubleCall op = do op2 <- op
+                   op2
 
 ------------------------------------------------------------------------------
 -- Ex 4: implement the analogue of function composition (the (.)
@@ -88,9 +86,8 @@ doubleCall op = do
 --   3. return the result (of type b)
 
 compose :: (a -> IO b) -> (c -> IO a) -> c -> IO b
-compose op1 op2 c = do
-                      op2r <- op2 c
-                      op1 op2r
+compose op1 op2 c = do a <- op2 c
+                       op1 a
 
 ------------------------------------------------------------------------------
 -- Ex 5: Reading lines from a file. The module System.IO defines
@@ -120,12 +117,15 @@ compose op1 op2 c = do
 --   ["module Set11b where","","import Control.Monad"]
 
 hFetchLines :: Handle -> IO [String]
-hFetchLines h = do
-                  eof <- hIsEOF h
-                  if eof then return [] else do
-                                              line <- hGetLine h
-                                              lines <- hFetchLines h
-                                              return (line : lines)
+hFetchLines h = do end <- hIsEOF h
+                   if end
+                     then return []
+                     else do line <- hGetLine h
+                             lines <- hFetchLines h
+                             return (line:lines)
+-- OR
+hFetchLines' h = do contents <- hGetContents h
+                    return (lines contents)
 
 ------------------------------------------------------------------------------
 -- Ex 6: Given a Handle and a list of line indexes, produce the lines
@@ -138,10 +138,11 @@ hFetchLines h = do
 -- handle.
 
 hSelectLines :: Handle -> [Int] -> IO [String]
-hSelectLines h nums = do
-                        lines <- hFetchLines h
-                        let indexedLines = zip [1..] lines
-                        return $ map (\i -> fromJust $ lookup i indexedLines) nums
+hSelectLines h inds = do ls <- hFetchLines h
+                         return $ pick ls inds
+
+pick :: [a] -> [Int] -> [a]
+pick ls inds = map (\i -> ls !! (i-1)) inds
 
 ------------------------------------------------------------------------------
 -- Ex 7: In this exercise we see how a program can be split into a
@@ -183,7 +184,11 @@ counter ("quit",n)  = (False,"bye bye",n)
 
 interact' :: ((String,st) -> (Bool,String,st)) -> st -> IO st
 interact' f state = do
-                      cmd <- getLine
-                      let (continue, disp, newState) = f (cmd, state)
-                      putStrLn disp
-                      if continue then interact' f newState else return newState
+  inp <- getLine
+  case f (inp,state) of
+    (True,  out, state') ->
+      do putStrLn out
+         interact' f state'
+    (False, out, state') ->
+      do putStrLn out
+         return state'
