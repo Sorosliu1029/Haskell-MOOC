@@ -1,5 +1,3 @@
-{-# OPTIONS_GHC -Wno-noncanonical-monad-instances #-} -- this silences an uninteresting warning
-
 module Set13a where
 
 import Mooc.Todo
@@ -30,7 +28,7 @@ import Examples.Bank
 
 (?>) :: Maybe a -> (a -> Maybe b) -> Maybe b
 Nothing ?> _ = Nothing   -- In case of failure, propagate failure
-Just x  ?> f = f x       -- In case of success, run the next computation
+Just x  ?> f = f x       -- In case of sucess, run the next computation
 
 -- DO NOT touch this definition!
 readNames :: String -> Maybe (String,String)
@@ -47,22 +45,24 @@ readNames s =
 -- (NB! There are obviously other corner cases like the inputs " " and
 -- "a b c", but you don't need to worry about those here)
 split :: String -> Maybe (String,String)
-split s = let ws = words s
-          in if length ws < 2 then Nothing else Just (head ws, concat (tail ws))
+split s = case break (==' ') s of (a,' ':b) -> Just (a,b)
+                                  _         -> Nothing
 
 -- checkNumber should take a pair of two strings and return them
 -- unchanged if they don't contain numbers. Otherwise Nothing is
 -- returned.
 checkNumber :: (String, String) -> Maybe (String, String)
-checkNumber (fn, ln) = let hasDigit = any isDigit
-                       in if hasDigit fn || hasDigit ln then Nothing else Just (fn, ln)
+checkNumber (for,sur) = if all notNumber for && all notNumber sur
+                        then Just (for,sur)
+                        else Nothing
+  where notNumber c = not $ elem c "0123456789"
 
 -- checkCapitals should take a pair of two strings and return them
 -- unchanged if both start with a capital letter. Otherwise Nothing is
 -- returned.
 checkCapitals :: (String, String) -> Maybe (String, String)
-checkCapitals (for,sur) = if isAsciiUpper (head for) && isAsciiUpper (head sur)
-                          then Just (for, sur)
+checkCapitals (for,sur) = if isUpper (for!!0) && isUpper (sur!!0)
+                          then Just (for,sur)
                           else Nothing
 
 ------------------------------------------------------------------------------
@@ -90,10 +90,15 @@ checkCapitals (for,sur) = if isAsciiUpper (head for) && isAsciiUpper (head sur)
 --     ==> Just "a"
 
 winner :: [(String,Int)] -> String -> String -> Maybe String
-winner scores player1 player2 = lookup player1 scores ?> lookup' ?> cmp
-  where lookup' s1 = case lookup player2 scores of Just s2 -> Just (s1, s2)
-                                                   _ -> Nothing
-        cmp (s1, s2) = if s1 >= s2 then Just player1 else Just player2
+winner scores player1 player2 = do
+  score1 <- lookup player1 scores
+  score2 <- lookup player2 scores
+  return (if score2 > score1 then player2 else player1)
+-- OR
+winner' scores player1 player2 = do
+  lookup player1 scores ?>
+    (\score1 -> lookup player2 scores ?>
+      (\score2 -> Just (if score2 > score1 then player2 else player1)))
 
 ------------------------------------------------------------------------------
 -- Ex 3: given a list of indices and a list of values, return the sum
@@ -111,13 +116,12 @@ winner scores player1 player2 = lookup player1 scores ?> lookup' ?> cmp
 --    Nothing
 
 selectSum :: Num a => [a] -> [Int] -> Maybe a
-selectSum xs [] = Just 0
-selectSum xs (i:is) = selectSum xs is >>= 
-                      (\rest -> Just (rest, safeIndex xs i)) >>= 
-                      (\(rest, x) -> case x of Just a -> Just (rest+a)
-                                               _ -> Nothing)
-  where indexed = zip [0..] xs
-        safeIndex xs i = lookup i indexed
+selectSum xs is = liftM sum $ mapM (safeIndex xs) is
+
+safeIndex :: [a] -> Int -> Maybe a
+safeIndex [] _ = Nothing
+safeIndex (x:xs) 0 = Just x
+safeIndex (x:xs) n = safeIndex xs (n-1)
 
 ------------------------------------------------------------------------------
 -- Ex 4: Here is the Logger monad from the course material. Implement
@@ -151,11 +155,12 @@ instance Applicative Logger where
   (<*>) = ap
 
 countAndLog :: Show a => (a -> Bool) -> [a] -> Logger Int
-countAndLog p [] = Logger [] 0
+countAndLog p [] = return 0
 countAndLog p (x:xs)
-  | p x = Logger (show x : lb) (cnt+1)
-  | otherwise = Logger lb cnt
-  where Logger lb cnt = countAndLog p xs
+  | p x = do msg (show x)
+             res <- countAndLog p xs
+             return (res+1)
+  | otherwise = countAndLog p xs
 
 ------------------------------------------------------------------------------
 -- Ex 5: You can find the Bank and BankOp code from the course
@@ -169,11 +174,11 @@ countAndLog p (x:xs)
 -- from Data.Map are available under the prefix Map.
 
 exampleBank :: Bank
-exampleBank = Bank (Map.fromList [("harry",10),("cedric",7),("ginny",1)])
+exampleBank = (Bank (Map.fromList [("harry",10),("cedric",7),("ginny",1)]))
 
 balance :: String -> BankOp Int
-balance accountName = BankOp balanceHelper
-  where balanceHelper (Bank bank) = (Map.findWithDefault 0 accountName bank, Bank bank)
+balance accountName = BankOp query
+  where query (Bank accounts) = (Map.findWithDefault 0 accountName accounts, Bank accounts)
 
 ------------------------------------------------------------------------------
 -- Ex 6: Using the operations balance, withdrawOp and depositOp, and
@@ -191,7 +196,12 @@ balance accountName = BankOp balanceHelper
 --     ==> ((),Bank (fromList [("cedric",7),("ginny",1),("harry",10)]))
 
 rob :: String -> String -> BankOp ()
-rob from to = balance from +> withdrawOp from +> depositOp to
+rob from to =
+  balance from
+  +>
+  withdrawOp from
+  +>
+  depositOp to
 
 ------------------------------------------------------------------------------
 -- Ex 7: using the State monad, write the operation `update` that first
@@ -203,7 +213,10 @@ rob from to = balance from +> withdrawOp from +> depositOp to
 --    ==> ((),7)
 
 update :: State Int ()
-update = modify (*2) >> modify (+1)
+update = do x <- get
+            put (2*x)
+            y <- get
+            put (y+1)
 
 ------------------------------------------------------------------------------
 -- Ex 8: Checking that parentheses are balanced with the State monad.
@@ -218,11 +231,11 @@ update = modify (*2) >> modify (+1)
 -- should work.
 --
 -- Examples:
---   runState (paren '(') 3    ==> ((),4)
---   runState (paren ')') 3    ==> ((),2)
---   runState (paren ')') 0    ==> ((),-1)
---   runState (paren ')') (-1) ==> ((),-1)
---   runState (paren '(') (-1) ==> ((),-1)
+--   runState (paren '(') 3    ==> (4,())
+--   runState (paren ')') 3    ==> (2,())
+--   runState (paren ')') 0    ==> (-1,())
+--   runState (paren ')') (-1) ==> (-1,())
+--   runState (paren '(') (-1) ==> (-1,())
 --   parensMatch "()"          ==> True
 --   parensMatch "("           ==> False
 --   parensMatch "())"         ==> False
@@ -231,11 +244,11 @@ update = modify (*2) >> modify (+1)
 --   parensMatch "(()))("      ==> False
 
 paren :: Char -> State Int ()
-paren c = get >>= f >>= put
-  where f cnt
-          | cnt == (-1) = return cnt
-          | c == '(' = return (cnt+1)
-          | c == ')' = return (cnt-1)
+paren c = do
+  s <- get
+  when (s>=0) (case c of '(' -> put (s+1)
+                         ')' -> put (s-1)
+                         _ -> return ())
 
 parensMatch :: String -> Bool
 parensMatch s = count == 0
@@ -266,10 +279,11 @@ parensMatch s = count == 0
 -- PS. The order of the list of pairs doesn't matter
 
 count :: Eq a => a -> State [(a,Int)] ()
-count x = get >>= set >>= put
-  where set pairs = let newPair = case lookup x pairs of Just cnt -> (x,cnt+1)
-                                                         _ -> (x,1)
-                    in return (newPair : deleteBy (\a b -> fst a == fst b) (x,0) pairs)
+count x = modify (inc x)
+  where inc x [] = [(x,1)]
+        inc x ((y,k):ys)
+          | x == y    = (y,k+1):ys
+          | otherwise = (y,k):inc x ys
 
 ------------------------------------------------------------------------------
 -- Ex 10: Implement the operation occurrences, which
@@ -291,4 +305,7 @@ count x = get >>= set >>= put
 --    ==> (4,[(2,1),(3,1),(4,1),(7,1)])
 
 occurrences :: (Eq a) => [a] -> State [(a,Int)] Int
-occurrences xs = mapM count xs >> get >>= (\cnts -> return (length cnts))
+occurrences xs = do
+  mapM_ count xs
+  counts <- get
+  return (length counts)
