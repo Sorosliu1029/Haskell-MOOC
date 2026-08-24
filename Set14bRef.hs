@@ -72,18 +72,16 @@ getAllQuery = Query (T.pack "SELECT account, amount FROM events;")
 
 -- openDatabase should open an SQLite database using the given
 -- filename, run initQuery on it, and produce a database Connection.
---
--- NOTE! Do not add anything to the name, otherwise you'll get weird
--- test failures later.
 openDatabase :: String -> IO Connection
-openDatabase file = do db <- open file
-                       execute_ db initQuery
-                       return db
+openDatabase name = do
+  db <- open name
+  execute_ db initQuery
+  return db
 
 -- given a db connection, an account name, and an amount, deposit
 -- should add an (account, amount) row into the database
 deposit :: Connection -> T.Text -> Int -> IO ()
-deposit db account amount = do execute db depositQuery (account, amount)
+deposit db account amount = execute db depositQuery (account, amount)
 
 ------------------------------------------------------------------------------
 -- Ex 2: Fetching an account's balance. Below you'll find
@@ -114,8 +112,9 @@ balanceQuery :: Query
 balanceQuery = Query (T.pack "SELECT amount FROM events WHERE account = ?;")
 
 balance :: Connection -> T.Text -> IO Int
-balance db account = do res <- query db balanceQuery [account] :: IO [[Int]]
-                        return (sum $ map head res)
+balance db account = do
+  rows <- query db balanceQuery [account] :: IO [[Int]]
+  return (sum (map head rows))
 
 ------------------------------------------------------------------------------
 -- Ex 3: Now that we have the database part covered, let's think about
@@ -147,18 +146,28 @@ balance db account = do res <- query db balanceQuery [account] :: IO [[Int]]
 --   parseCommand [T.pack "deposit", T.pack "madoff", T.pack "123456"]
 --     ==> Just (Deposit "madoff" 123456)
 
-data Command = Deposit T.Text Int | Balance T.Text
+-- Withdraw added for Ex 7
+data Command = Deposit T.Text Int | Withdraw T.Text Int | Balance T.Text
   deriving (Show, Eq)
 
 parseInt :: T.Text -> Maybe Int
 parseInt = readMaybe . T.unpack
 
+-- Did you know you can give multiple type signatures at once like this?
+textDeposit, textWithdraw, textBalance :: T.Text
+textDeposit = T.pack "deposit"
+textWithdraw = T.pack "withdraw"
+textBalance = T.pack "balance"
+
+-- Includes the error handling from Ex 8.
 parseCommand :: [T.Text] -> Maybe Command
-parseCommand (c:account:[]) = if c == T.pack "balance" then Just (Balance $ account) else Nothing
-parseCommand (c:account:amount:[])
-  | c == T.pack "deposit" = parseInt amount >>= \amount -> Just (Deposit account amount)
-  | c == T.pack "withdraw" = parseInt amount >>= \amount -> Just (Deposit account (negate amount))
-  | otherwise = Nothing
+parseCommand [command,account]
+  | command == textBalance  = return $ Balance account
+parseCommand [command,account,amountText]
+  | command == textDeposit  = do amount <- parseInt amountText
+                                 return $ Deposit account amount
+  | command == textWithdraw = do amount <- parseInt amountText
+                                 return $ Withdraw account amount
 parseCommand _ = Nothing
 
 ------------------------------------------------------------------------------
@@ -184,10 +193,31 @@ parseCommand _ = Nothing
 --   Set14b> perform db (Just (Balance (T.pack "unknown")))
 --   "0"
 
+performDeposit :: Connection -> T.Text -> Int -> IO T.Text
+performDeposit db account amount = do deposit db account amount
+                                      return (T.pack "OK")
+
+performBalance :: Connection -> T.Text -> IO T.Text
+performBalance db account = do
+  answer <- balance db account
+  return (T.pack (show answer))
+
+-- For Ex 7:
+performWithdraw :: Connection -> T.Text -> Int -> IO T.Text
+performWithdraw db account amount = do deposit db account (negate amount)
+                                       return (T.pack "OK")
+
+-- For Ex 8:
+performError :: IO T.Text
+performError = return (T.pack "ERROR")
+
 perform :: Connection -> Maybe Command -> IO T.Text
-perform db (Just (Deposit account amount)) = deposit db account amount >> return (T.pack "OK")
-perform db (Just (Balance account)) = balance db account >>= \amount -> return $ T.pack $ show amount
-perform _ Nothing = return (T.pack "ERROR")
+perform db (Just (Deposit account amount)) = performDeposit db account amount
+perform db (Just (Balance account)) = performBalance db account
+-- For Ex 7:
+perform db (Just (Withdraw account amount)) = performWithdraw db account amount
+-- For Ex 8:
+perform db Nothing = performError
 
 ------------------------------------------------------------------------------
 -- Ex 5: Next up, let's set up a simple HTTP server. Implement a WAI
@@ -236,11 +266,17 @@ simpleServer request respond = respond (responseLBS status200 [] (encodeResponse
 -- Remember:
 -- type Application = Request -> (Response -> IO ResponseReceived) -> IO ResponseReceived
 server :: Connection -> Application
-server db = app
-  where app request respond = do let paths = pathInfo request
-                                     cmds = parseCommand paths
-                                 result <- perform db cmds
-                                 respond (responseLBS status200 [] (encodeResponse result))
+server db request respond = do
+  let path = pathInfo request
+  --putStr "Request: "
+  --print path
+  let command = parseCommand path
+  --putStr "Command: "
+  --print command
+  response <- perform db command
+  --putStr "Response: "
+  --print response
+  respond (responseLBS status200 [] (encodeResponse response))
 
 port :: Int
 port = 3421
@@ -271,6 +307,7 @@ main = do
 --   - Open <http://localhost:3421/balance/simon> in your browser.
 --     You should see the text 11.
 
+-- See solutions to exercises 3 and 4 above
 
 ------------------------------------------------------------------------------
 -- Ex 8: Error handling. Modify the parseCommand function so that it
@@ -292,3 +329,4 @@ main = do
 --    - http://localhost:3421/balance/matti/pekka
 
 
+-- See solutions to exercises 3 and 4 above
